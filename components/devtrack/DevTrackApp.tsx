@@ -679,9 +679,13 @@ function LoginPage({ goRegister, goApp, goLanding }: any) {
 }
 
 function RegisterPage({ goLogin, goLanding }: any) {
+  const [fullName, setFullName] = useState("");
+  const [orgName, setOrgName] = useState("");
   const [email, setEmail] = useState("");
+  const [selectedRole, setSelectedRole] = useState("developer");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [file, setFile] = useState<any>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [successText, setSuccessText] = useState("");
@@ -692,22 +696,69 @@ function RegisterPage({ goLogin, goLanding }: any) {
     if (isSubmitting.current) return;
     isSubmitting.current = true;
     setError("");
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       isSubmitting.current = false;
       return;
     }
+    if (!file) {
+      setError("Please attach your ID/verification document.");
+      isSubmitting.current = false;
+      return;
+    }
+    if (!fullName.trim() || !orgName.trim()) {
+      setError("Full name and organization name are required.");
+      isSubmitting.current = false;
+      return;
+    }
+
     setLoading(true);
-    const { register } = await import("@/lib/data/auth");
-    const res = await register(email, password, "", "", "", ""); // pass empty strings to match signature
-    if (res.error) {
-      setError(res.error);
-      setLoading(false); isSubmitting.current = false;
-    } else if (res.data?.user?.identities && res.data.user.identities.length === 0) {
-      setError("An account with this email already exists. Please sign in instead.");
-      setLoading(false); isSubmitting.current = false;
-    } else {
-      setSuccessText("Account created successfully. Please sign in to complete your onboarding verification.");
+    try {
+      const supabase = createClient();
+
+      // 1. Sign up with Supabase Auth
+      const { data: authData, error: signUpErr } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName, organization: orgName } }
+      });
+
+      if (signUpErr) { setError(signUpErr.message); return; }
+      if (!authData.user) { setError("Sign up failed. Please try again."); return; }
+      if (authData.user.identities && authData.user.identities.length === 0) {
+        setError("An account with this email already exists. Please sign in instead.");
+        return;
+      }
+
+      const userId = authData.user.id;
+
+      // 2. Update profile
+      await supabase.from("profiles").upsert({ id: userId, full_name: fullName, username: email });
+
+      // 3. Upload verification document
+      const ext = file.name.split('.').pop();
+      const path = `${userId}/id-document-${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from("verification_documents").upload(path, file);
+      if (uploadErr) { setError("Document upload failed: " + uploadErr.message); return; }
+
+      // 4. Insert verification request (only columns that exist in DB)
+      await supabase.from("verification_requests").insert({
+        user_id: userId,
+        requested_role: selectedRole,
+        document_path: path,
+        status: "pending"
+      });
+
+      // Sign out so they must explicitly sign in after approval
+      await supabase.auth.signOut();
+
+      setSuccessText(
+        `Account created! Your verification request has been submitted.\n\nAn Owner or Admin will review your ID document and approve your access.\n\nOnce approved, return here and Sign In.`
+      );
+    } catch (e: any) {
+      setError(e.message || "An unexpected error occurred.");
+    } finally {
       setLoading(false);
       isSubmitting.current = false;
     }
@@ -719,27 +770,57 @@ function RegisterPage({ goLogin, goLanding }: any) {
         {loading && <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 rounded-xl"><Loader2 className="animate-spin text-white" /></div>}
         <h1 className="font-display font-bold text-[22px] mb-1">Create your account</h1>
         <p className="text-[13px] mb-6" style={{ color: T.textFaint }}>Join your organization's engineering workspace.</p>
-        
+
         {error && <div className="mb-4 p-3 rounded bg-red-500/10 border border-red-500/20 text-red-500 text-[12.5px]">{error}</div>}
-        {successText && <div className="mb-4 p-3 rounded bg-green-500/10 border border-green-500/20 text-green-500 text-[12.5px] whitespace-pre-line">{successText}</div>}
-        
-        <form onSubmit={handleSubmit}>
-          <Field label="Email">
-            <TextField type="email" placeholder="you@company.com" required value={email} onChange={(e: any) => setEmail(e.target.value)} />
-          </Field>
-          <Field label="Password">
-            <TextField type="password" placeholder="Create a secure password" required minLength={6} value={password} onChange={(e: any) => setPassword(e.target.value)} />
-          </Field>
-          <Field label="Confirm Password">
-            <TextField type="password" placeholder="Confirm your password" required minLength={6} value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)} />
-          </Field>
-          <Button type="submit" variant="primary" className="w-full py-2.5 text-[13.5px]">Create Account</Button>
-        </form>
-        <div className="text-center mt-6 text-[13px]" style={{ color: T.textFaint }}>
-          Already have an account? <button type="button" onClick={goLogin} className="dt-focusable font-medium" style={{ color: T.crimsonBright }} data-interactive>Sign in instead</button>
-        </div>
+        {successText ? (
+          <div className="mb-4 p-4 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[12.5px] whitespace-pre-line leading-relaxed">{successText}
+            <div className="mt-4"><button type="button" onClick={goLogin} className="dt-btn-primary rounded-lg px-4 py-2 text-[12.5px]" data-interactive>Go to Sign In</button></div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <Field label="Full Name">
+              <TextField placeholder="Jane Doe" required value={fullName} onChange={(e: any) => setFullName(e.target.value)} />
+            </Field>
+            <Field label="Organization Name">
+              <TextField placeholder="Acme Engineering" required value={orgName} onChange={(e: any) => setOrgName(e.target.value)} />
+            </Field>
+            <Field label="Organization Email">
+              <TextField type="email" placeholder="you@company.com" required value={email} onChange={(e: any) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Role in Organization">
+              <select value={selectedRole} onChange={(e: any) => setSelectedRole(e.target.value)} className="dt-input dt-focusable w-full rounded-lg px-3.5 py-2.5 text-[13.5px] appearance-none" data-interactive>
+                <option value="developer">Developer</option>
+                <option value="qa">QA</option>
+                <option value="admin">Admin</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Password">
+                <TextField type="password" placeholder="Create password" required minLength={6} value={password} onChange={(e: any) => setPassword(e.target.value)} />
+              </Field>
+              <Field label="Confirm Password">
+                <TextField type="password" placeholder="Confirm password" required minLength={6} value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)} />
+              </Field>
+            </div>
+            <Field label="ID / Verification Document">
+              <div className="mt-1">
+                <input type="file" accept="image/*,.pdf" required className="dt-input w-full text-[12px] p-2 rounded-lg" onChange={(e: any) => setFile(e.target.files?.[0])} data-interactive />
+                <p className="text-[11px] mt-1" style={{ color: T.textFaint }}>Employee ID card or official document (image/PDF).</p>
+              </div>
+            </Field>
+            <Button type="submit" variant="primary" className="w-full py-2.5 text-[13.5px] mt-2" disabled={loading}>
+              {loading ? "Submitting..." : "Submit Verification Request"}
+            </Button>
+          </form>
+        )}
+        {!successText && (
+          <div className="text-center mt-6 text-[13px]" style={{ color: T.textFaint }}>
+            Already have an account? <button type="button" onClick={goLogin} className="dt-focusable font-medium" style={{ color: T.crimsonBright }} data-interactive>Sign in instead</button>
+          </div>
+        )}
       </div>
-      <button onClick={goLanding} className="w-full text-center mt-5 text-[12.5px] dt-focusable" style={{ color: T.textFaint }} data-interactive>? Back to home</button>
+      <button onClick={goLanding} className="w-full text-center mt-5 text-[12.5px] dt-focusable" style={{ color: T.textFaint }} data-interactive>← Back to home</button>
     </AuthShell>
   );
 }
@@ -2476,6 +2557,12 @@ export default function DevTrackApp() {
   const [refresh, setRefresh] = useState(0); // to force re-render when global data changes
 
   useEffect(() => {
+    // Only load user data when explicitly entering the app screen.
+    // Do NOT auto-redirect from landing/login/register screens even if a session exists.
+    if (screen !== "app") {
+      setAuthLoaded(true);
+      return;
+    }
     async function loadUser() {
       try {
         const { user, profile, orgMember } = await getCurrentUserProfile();
@@ -2580,15 +2667,12 @@ export default function DevTrackApp() {
             }));
           }
           setRefresh((r: number) => r + 1);
-          if (screen === "login") {
-            setScreen("app");
-            setView("dashboard");
-          }
         } else {
-          // If no user/profile and we are on app screen, redirect to login
-          if (screen === "app") setScreen("login");
+          // No authenticated session — go back to login
+          setScreen("login");
         }
       } catch (err: any) {
+        console.error("loadUser error:", err);
         setAuthError(err.message || "Failed to load application data.");
       } finally {
         setAuthLoaded(true);

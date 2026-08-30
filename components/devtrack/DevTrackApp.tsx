@@ -1209,13 +1209,13 @@ function CreateIssue({ onCreated, goIssues, goIssue }: any) {
               <Field label="Priority">
                 <select value={form.priority} onChange={(e: any) => setForm({ ...form, priority: e.target.value })} className="dt-input dt-focusable w-full rounded-lg px-3.5 py-2.5 text-[13.5px]" data-interactive required>
                   <option value="">Select priority</option>
-                  {["P0", "P1", "P2", "P3"].map((p) => <option key={p} value={p}>{p}</option>)}
+                  {[["p0","P0"],["p1","P1"],["p2","P2"],["p3","P3"]].map(([val,label]) => <option key={val} value={val}>{label}</option>)}
                 </select>
               </Field>
               <Field label="Severity">
                 <select value={form.severity} onChange={(e: any) => setForm({ ...form, severity: e.target.value })} className="dt-input dt-focusable w-full rounded-lg px-3.5 py-2.5 text-[13.5px]" data-interactive required>
                   <option value="">Select severity</option>
-                  {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => <option key={s} value={s}>{s}</option>)}
+                  {[["critical","CRITICAL"],["high","HIGH"],["medium","MEDIUM"],["low","LOW"]].map(([val,label]) => <option key={val} value={val}>{label}</option>)}
                 </select>
               </Field>
               <Field label="Assignee">
@@ -2323,23 +2323,25 @@ function StatusBadge({ s }: { s: string }) {
 }
 
 function PriorityBadge({ p }: { p: string }) {
+  const upper = (p || "").toUpperCase();
   let c = T.textDim;
-  if (p === "HIGH") c = T.amber;
-  if (p === "CRITICAL") c = T.crimson;
+  if (upper === "P1" || upper === "HIGH") c = T.amber;
+  if (upper === "P0" || upper === "CRITICAL") c = T.crimson;
   return (
     <div className="inline-flex items-center gap-1 text-[11px] font-mono tracking-wide uppercase" style={{ color: c }}>
-      <ArrowUpCircle size={12} /> {p}
+      <ArrowUpCircle size={12} /> {upper}
     </div>
   );
 }
 
 function SeverityBadge({ s }: { s: string }) {
+  const upper = (s || "").toUpperCase();
   let c = T.textDim;
-  if (s === "HIGH") c = T.amber;
-  if (s === "CRITICAL") c = T.crimsonBright;
+  if (upper === "HIGH") c = T.amber;
+  if (upper === "CRITICAL") c = T.crimsonBright;
   return (
     <div className="inline-flex items-center gap-1 text-[11px] font-mono tracking-wide uppercase" style={{ color: c }}>
-      <AlertTriangle size={12} /> {s}
+      <AlertTriangle size={12} /> {upper}
     </div>
   );
 }
@@ -2578,7 +2580,7 @@ export default function DevTrackApp() {
             }));
           }
           setRefresh((r: number) => r + 1);
-          if (screen === "login" || screen === "register") {
+          if (screen === "login") {
             setScreen("app");
             setView("dashboard");
           }

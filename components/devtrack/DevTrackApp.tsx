@@ -164,66 +164,21 @@ let ISSUES: any[] = [];
 let ACTIVITIES: any[] = [];
 
 
-function Avatar({ user, size = 28, onUpload, isMe }: any) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+function Avatar({ user, size = 28 }: any) {
   const initials = user?.initials || (user?.name || "U").substring(0, 2).toUpperCase();
-  
-  const [actualSrc, setActualSrc] = useState(user?.avatarUrl || user?.avatar_url);
-
-  useEffect(() => {
-    setActualSrc(user?.avatarUrl || user?.avatar_url);
-  }, [user?.avatarUrl, user?.avatar_url]);
-
-  
-  const handleFileChange = async (e: any) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return alert("Please select a valid image file.");
-    if (file.size > 5 * 1024 * 1024) return alert("Please select an image file under 5MB.");
-    
-    // Optimistic UI update
-    const localUrl = URL.createObjectURL(file);
-    if (user) user.avatarUrl = localUrl;
-    setActualSrc(localUrl);
-
-    const res = await uploadAvatarToSupabase(file);
-    if (res.error) {
-      alert(res.error);
-    } else if (res.url) {
-      if (user) user.avatarUrl = res.url;
-      setActualSrc(res.url);
-      if (onUpload) onUpload(res.url);
-    }
-    e.target.value = null;
-  };
+  const actualSrc = user?.avatarUrl || user?.avatar_url;
   return (
     <div
-      onClick={() => isMe && fileInputRef.current?.click()}
-      title={isMe ? "Change profile photo" : user?.name}
-      
-      className={`rounded-full flex items-center justify-center font-semibold font-mono shrink-0 relative overflow-hidden group ${isMe ? 'cursor-pointer dt-focusable' : ''}`}
+      title={user?.name}
+      className="rounded-full flex items-center justify-center font-semibold font-mono shrink-0 relative overflow-hidden"
       style={{ width: size, height: size, background: `${user?.color}22`, color: user?.color, fontSize: size * 0.38, border: `1px solid ${user?.color}44` }}
-      data-interactive={isMe ? true : undefined}
-      role={isMe ? "button" : undefined}
-      aria-label={isMe ? "Change profile photo" : undefined}
-      tabIndex={isMe ? 0 : undefined}
     >
-      {isMe && (
-        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-      )}
       {actualSrc ? (
         <img src={actualSrc} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : (
         initials
       )}
-      {isMe && (
-        <div className="absolute inset-0 bg-black/50 opacity-100 flex flex-col items-center justify-center transition-opacity z-10" style={{ fontSize: Math.max(10, size * 0.25) }}>
-          <span style={{ fontSize: size > 40 ? size * 0.3 : size * 0.4 }}>📷</span>
-          {size > 40 && <span className="text-white mt-1 leading-tight text-center px-1">Change<br/>photo</span>}
-        </div>
-      )}
-      {user?.status === "online" && !isMe && (
+      {user?.status === "online" && (
         <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2" style={{ background: T.green, borderColor: T.surface }} />
       )}
     </div>
@@ -400,9 +355,6 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
 }
 
 function Topbar({ setMobileOpen, openSearch, view, setView }: any) {
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [orgOpen, setOrgOpen] = useState(false);
-  const unread = 0;
   return (
     <div className="flex flex-col sm:flex-row sm:h-16 px-4 md:px-6 shrink-0 relative py-2 sm:py-0 gap-2 sm:gap-3 z-20" style={{ borderBottom: `1px solid ${T.border}`, background: "rgba(10,10,11,.9)", backdropFilter: "blur(8px)" }}>
       {/* Top row on mobile, left on desktop */}
@@ -414,17 +366,8 @@ function Topbar({ setMobileOpen, openSearch, view, setView }: any) {
           <span className="sm:hidden font-display font-bold text-[15px] tracking-tight">DEVTRACK</span>
         </div>
         
-        {/* On mobile, icons move here. On desktop, they are on the right */}
+        {/* On mobile, avatar goes here */}
         <div className="flex sm:hidden items-center gap-2">
-          <button
-            className="relative w-9 h-9 rounded-lg flex items-center justify-center dt-btn-ghost dt-focusable"
-            onClick={() => setNotifOpen((v) => !v)}
-            data-interactive
-            aria-label="Notifications"
-          >
-            <Bell size={16} />
-            {unread > 0 && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style={{ background: T.crimsonBright, boxShadow: `0 0 6px ${T.crimson}` }} />}
-          </button>
           <button onClick={() => setView("settings")} data-interactive className="dt-focusable">
             <Avatar user={byId(meId) as any} size={28} />
           </button>
@@ -446,32 +389,6 @@ function Topbar({ setMobileOpen, openSearch, view, setView }: any) {
       </button>
 
       <div className="ml-auto hidden sm:flex items-center gap-1.5">
-        <button
-          className="relative w-9 h-9 rounded-lg flex items-center justify-center dt-btn-ghost dt-focusable"
-          onClick={() => setNotifOpen((v) => !v)}
-          data-interactive
-          aria-label="Notifications"
-        >
-          <Bell size={16} />
-          {unread > 0 && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style={{ background: T.crimsonBright, boxShadow: `0 0 6px ${T.crimson}` }} />}
-        </button>
-        {notifOpen && (
-          <div className="absolute right-4 sm:right-40 top-24 sm:top-14 w-80 rounded-xl overflow-hidden dt-fade z-40" style={{ background: T.surface2, border: `1px solid ${T.border}`, boxShadow: "0 20px 48px -8px rgba(0,0,0,.6)" }}>
-            <div className="px-4 py-3 text-[12px] font-semibold flex items-center justify-between" style={{ borderBottom: `1px solid ${T.border}` }}>
-              Notifications <span style={{ color: T.textFaint }} className="font-normal">{unread} unread</span>
-            </div>
-            <div className="max-h-80 overflow-y-auto dt-scrollbar">
-              <div className="p-6 text-center text-[12.5px]" style={{ color: T.textDim }}>No recent notifications</div>
-            </div>
-          </div>
-        )}
-        <button
-          onClick={() => setOrgOpen((v) => !v)}
-          className="hidden sm:flex items-center gap-2 dt-btn-ghost dt-focusable rounded-lg px-3 py-2 text-[12.5px]"
-          data-interactive
-        >
-          <Building2 size={14} /> {(byId(meId) as any)?.orgName || "DevTrack"} <ChevronDown size={13} />
-        </button>
         <button onClick={() => setView("settings")} data-interactive className="dt-focusable">
           <Avatar user={byId(meId) as any} size={32} />
         </button>
@@ -831,10 +748,10 @@ function RegisterPage({ goLogin, goLanding }: any) {
    DASHBOARD
    ============================================================================ */
 function Dashboard({ goIssue, setView }: any) {
-  const openCount = ISSUES.filter(i => i.status === "OPEN").length;
-  const inProgCount = ISSUES.filter(i => i.status === "IN PROGRESS").length;
-  const critCount = ISSUES.filter(i => i.severity === "CRITICAL" && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
-  const resCount = ISSUES.filter(i => i.status === "RESOLVED" || i.status === "CLOSED").length;
+  const openCount = ISSUES.filter(i => i.status === "OPEN" || i.status === "open").length;
+  const inProgCount = ISSUES.filter(i => i.status === "IN PROGRESS" || i.status === "in_progress").length;
+  const critCount = ISSUES.filter(i => i.severity?.toUpperCase() === "CRITICAL" && i.status !== "RESOLVED" && i.status !== "resolved" && i.status !== "CLOSED" && i.status !== "closed").length;
+  const resCount = ISSUES.filter(i => i.status === "RESOLVED" || i.status === "resolved" || i.status === "CLOSED" || i.status === "closed").length;
 
   const severityDist = [
     { name: "Critical", value: ISSUES.filter(i => i.severity === "CRITICAL").length, color: T.crimson },
@@ -1204,13 +1121,13 @@ function CreateIssue({ onCreated, goIssues, goIssue }: any) {
       component_id: form.component || null,
       priority: form.priority,
       severity: form.severity,
-      status: ((byId(meId) as any)?.role?.toLowerCase() !== 'owner' && (byId(meId) as any)?.role?.toLowerCase() !== 'admin') ? "IN REVIEW" : "OPEN",
+      status: ((byId(meId) as any)?.role?.toLowerCase() !== 'owner' && (byId(meId) as any)?.role?.toLowerCase() !== 'admin') ? "in_review" : "open",
       assignee_id: form.assignee || null,
       labels: form.labels,
       version_id: form.version || null,
       milestone_id: form.milestone || null
     });
-    setLoading(false); isSubmitting.current = false;
+    setLoading(false);
     if (res.error) setError(res.error);
     else {
       const { getIssueData } = await import("@/lib/data/issues");
@@ -1736,7 +1653,7 @@ function Projects({ onOpen }: any) {
     
     if (PROJECTS.some(p => p.key === form.key)) {
       setError("Project key must be unique.");
-      setLoading(false); isSubmitting.current = false;
+      setLoading(false);
       return;
     }
 
@@ -1756,7 +1673,7 @@ function Projects({ onOpen }: any) {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false); isSubmitting.current = false;
+      setLoading(false);
     }
   };
 
@@ -1767,7 +1684,7 @@ function Projects({ onOpen }: any) {
           <h1 className="font-display font-bold text-[24px]">Projects</h1>
           <p className="text-[13.5px] mt-1" style={{ color: T.textDim }}>All engineering projects and their current health.</p>
         </div>
-        {isOwner && (
+        {(isOwner || isAdmin) && (
           <Button variant="primary" onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-4 py-2 text-[13px]">
             <Plus size={15} /> Create Project
           </Button>
@@ -1777,7 +1694,7 @@ function Projects({ onOpen }: any) {
         {PROJECTS.length > 0 ? PROJECTS.map((p) => <ProjectCard key={p.id} p={p} onOpen={onOpen} />) : (
           <div className="col-span-full py-12 text-center text-[13px]" style={{ color: T.textDim }}>
             No projects yet.
-            {isOwner && <div className="mt-3"><Button variant="primary" onClick={() => setShowModal(true)}>Create Project</Button></div>}
+            {(isOwner || isAdmin) && <div className="mt-3"><Button variant="primary" onClick={() => setShowModal(true)}>Create Project</Button></div>}
           </div>
         )}
       </div>
@@ -2154,7 +2071,7 @@ function Verification() {
     import("@/lib/data/profiles").then(m => {
       m.getPendingVerifications().then(data => {
         setRequests(data);
-        setLoading(false); isSubmitting.current = false;
+        setLoading(false);
       });
     });
   }, []);
@@ -2199,8 +2116,8 @@ function Verification() {
                     {r.profiles?.full_name?.charAt(0) || "?"}
                   </div>
                   <div>
-                    <div className="font-semibold text-[14.5px]">{r.profiles?.full_name}</div>
-                    <div className="text-[12.5px]" style={{ color: T.textDim }}>{r.profiles?.email} &middot; {r.role}</div>
+                    <div className="font-semibold text-[14.5px]">{r.profiles?.full_name || r.profiles?.username || "Unknown User"}</div>
+                    <div className="text-[12.5px]" style={{ color: T.textDim }}>{r.profiles?.username || r.user_id?.substring(0, 8)} &middot; {r.role}</div>
                   </div>
                 </div>
                 <div className="text-[11px] font-mono px-2 py-0.5 rounded" style={{ background: T.surface3, color: T.textDim }}>
@@ -2240,44 +2157,10 @@ function Verification() {
    ============================================================================ */
 function Settings() {
   const [tab, setTab] = useState("Profile");
-  const [profileName, setProfileName] = useState((byId(meId) as any)?.name || "Apoorv Malhotra");
   const actualMe = byId(meId) as any;
-  const [globalSrc, setGlobalSrc] = useState(actualMe?.avatarUrl || actualMe?.avatar_url);
+  const [profileName, setProfileName] = useState(actualMe?.name || "");
   const [orgName, setOrgName] = useState(actualMe?.orgName || "");
   const [orgDesc, setOrgDesc] = useState(actualMe?.orgDesc || "");
-
-  const handleAvatarChange = async (e: any) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert("Please select a valid image file.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Please select an image file under 5MB.");
-      return;
-    }
-    const localUrl = URL.createObjectURL(file);
-    const meUser = byId(meId) as any;
-    if (meUser) meUser.avatarUrl = localUrl;
-    setGlobalSrc(localUrl);
-    
-    const res = await uploadAvatarToSupabase(file);
-    if (res.error) {
-      alert(res.error);
-    } else if (res.url) {
-      if (meUser) meUser.avatarUrl = res.url;
-      setGlobalSrc(res.url);
-    }
-    
-    e.target.value = null;
-  };
-
-  const handleRemoveAvatar = () => {
-    const meUser = byId(meId) as any;
-    if (meUser) meUser.avatarUrl = null;
-    setGlobalSrc(null);
-  };
 
   const tabs = [
     { id: "Profile", icon: User }, { id: "Organization", icon: Building2 }, { id: "Team", icon: Users },
@@ -2303,15 +2186,10 @@ function Settings() {
           {tab === "Profile" && (
             <>
               <div className="flex items-center gap-4 mb-6">
-                <Avatar user={{ ...((byId(meId) as any) || {}), name: profileName }} size={56} />
-                <div className="flex gap-2">
-                  <label className="dt-focusable cursor-pointer">
-                    <Button className="text-[12px] py-1.5 pointer-events-none">Change avatar</Button>
-                    <input type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} />
-                  </label>
-                  {globalSrc && (
-                    <Button className="text-[12px] py-1.5 text-red-500" onClick={handleRemoveAvatar}>Remove</Button>
-                  )}
+                <Avatar user={{ ...(actualMe || {}), name: profileName }} size={56} />
+                <div>
+                  <div className="text-[14px] font-semibold">{profileName || "No name set"}</div>
+                  <div className="text-[12px] capitalize mt-0.5" style={{ color: T.textDim }}>{actualMe?.role || "—"}</div>
                 </div>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -2424,10 +2302,15 @@ function CustomCursor({ enabled }: any) {
 
 const STATUS_STYLE: any = {
   "OPEN": { dot: T.blue, text: T.text, bg: T.surface2 },
+  "open": { dot: T.blue, text: T.text, bg: T.surface2 },
   "IN PROGRESS": { dot: T.amber, text: T.amber, bg: `${T.amber}11` },
+  "in_progress": { dot: T.amber, text: T.amber, bg: `${T.amber}11` },
   "IN REVIEW": { dot: T.purple, text: T.purple, bg: `${T.purple}11` },
+  "in_review": { dot: T.purple, text: T.purple, bg: `${T.purple}11` },
   "RESOLVED": { dot: T.green, text: T.green, bg: `${T.green}11` },
+  "resolved": { dot: T.green, text: T.green, bg: `${T.green}11` },
   "CLOSED": { dot: T.textDim, text: T.textDim, bg: T.surface2 },
+  "closed": { dot: T.textDim, text: T.textDim, bg: T.surface2 },
 };
 
 function StatusBadge({ s }: { s: string }) {
@@ -2461,19 +2344,6 @@ function SeverityBadge({ s }: { s: string }) {
   );
 }
 
-
-async function uploadAvatarToSupabase(file: File) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not logged in" };
-  const ext = file.name.split('.').pop();
-  const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("avatars").upload(path, file);
-  if (error) return { error: error.message };
-  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-  await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-  return { url: publicUrl };
-}
 
 function VerificationPendingBlocker({ user }: { user: any }) {
   const [file, setFile] = useState<any>(null);
@@ -2525,7 +2395,6 @@ function VerificationPendingBlocker({ user }: { user: any }) {
       // We assume there's a trigger or backend function handling the organization link, or we can insert into verification_requests
       const { error: vrErr } = await supabase.from("verification_requests").insert({
         user_id: user.id,
-        organization_name: org,
         requested_role: role,
         employee_id: empId,
         document_path: path
@@ -2613,9 +2482,9 @@ export default function DevTrackApp() {
           const existing = USERS.findIndex(u => u.id === (profile?.id || user.id));
           const mappedUser = {
             id: profile?.id || user.id,
-            name: orgMember?.full_name || profile?.full_name || profile?.username || user.user_metadata?.full_name || user.email?.split("@")[0] || "Unknown",
-            initials: (orgMember?.full_name || profile?.full_name || profile?.username || user.user_metadata?.full_name || user.email || "U").substring(0, 2).toUpperCase(),
-            role: orgMember?.role || "member",
+            name: profile?.full_name || profile?.username || user.user_metadata?.full_name || user.email?.split("@")[0] || "Unknown",
+            initials: (profile?.full_name || profile?.username || user.user_metadata?.full_name || user.email || "U").substring(0, 2).toUpperCase(),
+            role: orgMember?.role || "viewer",
             email: user.email,
             color: T.blue,
             status: "online",
@@ -2640,10 +2509,10 @@ export default function DevTrackApp() {
               const tProfile = t.profiles || {};
               const tMap = {
                 id: t.user_id,
-                name: t.full_name || tProfile.username || t.email?.split('@')[0] || "Unknown",
-                initials: (t.full_name || tProfile.username || t.email || "U").substring(0, 2).toUpperCase(),
-                role: t.role || "member",
-                email: t.email,
+                name: tProfile.full_name || tProfile.username || t.user_id?.substring(0, 8) || "Unknown",
+                initials: (tProfile.full_name || tProfile.username || "U").substring(0, 2).toUpperCase(),
+                role: t.role || "viewer",
+                email: tProfile.username || "",
                 color: T.green,
                 status: t.status === "active" ? "online" : "away",
                 orgId: t.organization_id,

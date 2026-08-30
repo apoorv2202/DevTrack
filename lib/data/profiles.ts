@@ -15,11 +15,24 @@ export async function getCurrentUserProfile() {
 
   const { data: orgMember, error: oErr } = await supabase
     .from("organization_members")
-    .select("organization_id, role, status, employee_id, organizations(name)")
+    .select("organization_id, role, status, employee_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
-                      return { user, profile, orgMember };
+  // Fetch org name separately to avoid RLS join issues
+  let orgData: { name?: string } | null = null;
+  if (orgMember?.organization_id) {
+    const { data } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", orgMember.organization_id)
+      .maybeSingle();
+    orgData = data;
+  }
+
+  const orgMemberWithOrg = orgMember ? { ...orgMember, organizations: orgData } : null;
+
+  return { user, profile, orgMember: orgMemberWithOrg };
 }
 
 export async function getPendingVerifications() {
@@ -38,7 +51,7 @@ export async function getPendingVerifications() {
 
   const { data, error } = await supabase
     .from("organization_members")
-    .select("user_id, status, employee_id, role, profiles!organization_members_user_id_fkey(full_name, email)")
+    .select("user_id, status, employee_id, role, profiles!organization_members_user_id_fkey(full_name, username)")
     .eq("organization_id", orgMember.organization_id)
     .eq("status", "pending");
 
@@ -93,7 +106,7 @@ export async function getTeamMembers() {
 
   const { data, error } = await supabase
     .from("organization_members")
-    .select("user_id, status, employee_id, role, full_name, email, profiles!organization_members_user_id_fkey(avatar_url, username)")
+    .select("user_id, organization_id, status, employee_id, role, profiles!organization_members_user_id_fkey(id, full_name, username, avatar_url)")
     .eq("organization_id", orgMember.organization_id);
 
   if (error) { console.error(error); return []; }

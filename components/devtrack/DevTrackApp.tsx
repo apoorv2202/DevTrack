@@ -164,7 +164,8 @@ let ISSUES: any[] = [];
 let ACTIVITIES: any[] = [];
 
 
-function Avatar({ user, size = 28, onUpload }: any) {
+function Avatar({ user, size = 28, onUpload, isMe }: any) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const initials = user?.initials || (user?.name || "U").substring(0, 2).toUpperCase();
   
@@ -198,6 +199,7 @@ function Avatar({ user, size = 28, onUpload }: any) {
   };
   return (
     <div
+      onClick={() => isMe && fileInputRef.current?.click()}
       title={isMe ? "Change profile photo" : user?.name}
       
       className={`rounded-full flex items-center justify-center font-semibold font-mono shrink-0 relative overflow-hidden group ${isMe ? 'cursor-pointer dt-focusable' : ''}`}
@@ -760,25 +762,13 @@ function LoginPage({ goRegister, goApp, goLanding }: any) {
 }
 
 function RegisterPage({ goLogin, goLanding }: any) {
-  const [file, setFile] = useState<any>(null);
-  const [drag, setDrag] = useState(false);
-  const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("Developer");
-  const [org, setOrg] = useState("");
   const [email, setEmail] = useState("");
-  const [empId, setEmpId] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [successText, setSuccessText] = useState("");
   const isSubmitting = useRef(false);
-
-  const onDrop = (e: any) => {
-    e.preventDefault(); setDrag(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) setFile(f);
-  };
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
@@ -791,7 +781,8 @@ function RegisterPage({ goLogin, goLanding }: any) {
       return;
     }
     setLoading(true);
-    const res = await register(email, password, fullName, org, empId, role);
+    const { register } = await import("@/lib/data/auth");
+    const res = await register(email, password, "", "", "", ""); // pass empty strings to match signature
     if (res.error) {
       setError(res.error);
       setLoading(false); isSubmitting.current = false;
@@ -799,47 +790,8 @@ function RegisterPage({ goLogin, goLanding }: any) {
       setError("An account with this email already exists. Please sign in instead.");
       setLoading(false); isSubmitting.current = false;
     } else {
-      if (!res.data?.session) {
-        // Email confirmation is required, so there is no active session yet.
-        // We CANNOT upload the document due to RLS.
-        setError("");
-        setSuccessText("Account created. Please verify your email, then sign in to complete identity verification.");
-        setLoading(false);
-        isSubmitting.current = false;
-        return;
-      }
-
-      // If we have a session, double check the authenticated user
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError("Account created, but no authenticated session found. Please sign in to upload your document.");
-        setLoading(false);
-        isSubmitting.current = false;
-        return;
-      }
-
-      if (file) {
-        try {
-          const ext = file.name.split('.').pop();
-          const safeFileName = `id-document-${Date.now()}.${ext}`;
-          const path = `${user.id}/${safeFileName}`;
-          const { error: uploadErr } = await supabase.storage.from("verification_documents").upload(path, file);
-          
-          if (uploadErr) {
-            console.error("Storage upload failed:", uploadErr);
-            setError("Document upload failed: " + uploadErr.message);
-            setLoading(false);
-            isSubmitting.current = false;
-            return;
-          }
-        } catch (err) {
-          console.error(err);
-        }
-      }
-      
+      setSuccessText("Account created successfully. Please sign in to complete your onboarding verification.");
       setLoading(false);
-      setSuccessText("Identity verification submitted.\nYour organization administrator will review your request.");
       isSubmitting.current = false;
     }
   };
@@ -855,65 +807,22 @@ function RegisterPage({ goLogin, goLanding }: any) {
         {successText && <div className="mb-4 p-3 rounded bg-green-500/10 border border-green-500/20 text-green-500 text-[12.5px] whitespace-pre-line">{successText}</div>}
         
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Full Name"><TextField placeholder="Jane Doe" required value={fullName} onChange={(e: any) => setFullName(e.target.value)} /></Field>
-            <Field label="Organization"><TextField placeholder="Acme Inc." required value={org} onChange={(e: any) => setOrg(e.target.value)} /></Field>
-          </div>
-          <Field label="Role in Organization">
-            <select className="dt-input w-full rounded-lg px-3.5 py-2.5 text-[13.5px] dt-focusable" data-interactive value={role} onChange={(e: any) => setRole(e.target.value)} required>
-              <option value="Developer">Developer</option>
-              <option value="QA">QA</option>
-            </select>
+          <Field label="Email">
+            <TextField type="email" placeholder="you@company.com" required value={email} onChange={(e: any) => setEmail(e.target.value)} />
           </Field>
-          <Field label="Organization Email"><TextField type="email" placeholder="jane@acme.com" required value={email} onChange={(e: any) => setEmail(e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Employee ID"><TextField placeholder="ACME-2026-0001" required value={empId} onChange={(e: any) => setEmpId(e.target.value)} /></Field>
-            <Field label="Password"><TextField type="password" placeholder="••••••••" required value={password} onChange={(e: any) => setPassword(e.target.value)} /></Field>
-          </div>
-          <Field label="Confirm Password"><TextField type="password" placeholder="••••••••" required value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)} /></Field>
-
-          <Field label="Identity Verification">
-            <div
-              onDragOver={(e: any) => { e.preventDefault(); setDrag(true); }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={onDrop}
-              className={`rounded-lg border-2 border-dashed p-5 text-center transition-colors ${drag ? "dt-drag-over" : ""}`}
-              style={{ borderColor: T.border }}
-            >
-              {!file ? (
-                <>
-                  <Upload size={20} className="mx-auto mb-2" color={T.textFaint} />
-                  <div className="text-[12.5px] mb-2" style={{ color: T.textDim }}>Drag and drop your Employee ID Card, or</div>
-                  <label className="dt-btn-ghost dt-focusable inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] cursor-pointer" data-interactive>
-                    <IdCard size={14} /> Browse file
-                    <input type="file" accept="image/*" className="hidden" onChange={(e: any) => setFile(e.target.files?.[0] || null)} />
-                  </label>
-                </>
-              ) : (
-                <div className="flex items-center gap-3 text-left">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style={{ background: T.surface3 }}>
-                    <ImageIcon size={18} color={T.textDim} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] truncate">{file.name}</div>
-                    <div className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: T.amber }}><Clock size={11} /> Verification pending</div>
-                  </div>
-                  <button type="button" onClick={() => setFile(null)} data-interactive className="dt-focusable" aria-label="Remove file"><Trash2 size={15} color={T.textFaint} /></button>
-                </div>
-              )}
-            </div>
-            <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: T.textFaint }}>
-              Your organization administrator will verify your identity before you can access the workspace.
-            </p>
+          <Field label="Password">
+            <TextField type="password" placeholder="Create a secure password" required minLength={6} value={password} onChange={(e: any) => setPassword(e.target.value)} />
           </Field>
-
-          <Button type="submit" variant="primary" className="w-full py-2.5 text-[13.5px] mt-2" disabled={loading}>{loading ? "Creating Account..." : "Create Account"}</Button>
+          <Field label="Confirm Password">
+            <TextField type="password" placeholder="Confirm your password" required minLength={6} value={confirmPassword} onChange={(e: any) => setConfirmPassword(e.target.value)} />
+          </Field>
+          <Button type="submit" variant="primary" className="w-full py-2.5 text-[13.5px]">Create Account</Button>
         </form>
         <div className="text-center mt-6 text-[13px]" style={{ color: T.textFaint }}>
-          Already have an account? <button type="button" onClick={goLogin} className="dt-focusable font-medium" style={{ color: T.crimsonBright }} data-interactive>Sign in</button>
+          Already have an account? <button type="button" onClick={goLogin} className="dt-focusable font-medium" style={{ color: T.crimsonBright }} data-interactive>Sign in instead</button>
         </div>
       </div>
-      <button onClick={goLanding} className="w-full text-center mt-5 text-[12.5px] dt-focusable" style={{ color: T.textFaint }} data-interactive>← Back to home</button>
+      <button onClick={goLanding} className="w-full text-center mt-5 text-[12.5px] dt-focusable" style={{ color: T.textFaint }} data-interactive>? Back to home</button>
     </AuthShell>
   );
 }
@@ -1295,7 +1204,7 @@ function CreateIssue({ onCreated, goIssues, goIssue }: any) {
       component_id: form.component || null,
       priority: form.priority,
       severity: form.severity,
-      status: ((byId(meId) as any)?.role?.toLowerCase() !== 'owner' && (byId(meId) as any)?.role?.toLowerCase() !== 'admin') ? "PENDING" : "OPEN",
+      status: ((byId(meId) as any)?.role?.toLowerCase() !== 'owner' && (byId(meId) as any)?.role?.toLowerCase() !== 'admin') ? "IN REVIEW" : "OPEN",
       assignee_id: form.assignee || null,
       labels: form.labels,
       version_id: form.version || null,
@@ -2568,25 +2477,65 @@ async function uploadAvatarToSupabase(file: File) {
 
 function VerificationPendingBlocker({ user }: { user: any }) {
   const [file, setFile] = useState<any>(null);
+  const [fullName, setFullName] = useState("");
+  const [org, setOrg] = useState("");
+  const [role, setRole] = useState("Developer");
+  const [empId, setEmpId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const handleSubmit = async () => {
+    if (!file || !fullName || !org || !empId) {
+      setError("Please fill out all fields and attach your ID document.");
+      return;
+    }
     setUploading(true);
     setError("");
     try {
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
+      
+      
+      // Update profile
+      await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id);
+      
+      // Update user metadata so DB triggers can sync it
+      await supabase.auth.updateUser({
+        data: {
+          full_name: fullName,
+          organization: org,
+          employee_id: empId,
+          role: role
+        }
+      });
+      
+      // Upload ID
+
       const ext = file.name.split('.').pop();
       const path = `${user.id}/id-document-${Date.now()}.${ext}`;
       const { error: uploadErr } = await supabase.storage.from("verification_documents").upload(path, file);
+      
       if (uploadErr) {
         setError("Document upload failed: " + uploadErr.message);
-      } else {
-        setSuccess(true);
+        setUploading(false);
+        return;
       }
+      
+      // We assume there's a trigger or backend function handling the organization link, or we can insert into verification_requests
+      const { error: vrErr } = await supabase.from("verification_requests").insert({
+        user_id: user.id,
+        organization_name: org,
+        requested_role: role,
+        employee_id: empId,
+        document_path: path
+      });
+      
+      if (vrErr && !vrErr.message.includes("already exists")) {
+        console.warn("VR insert warn:", vrErr);
+      }
+      
+      setSuccess(true);
     } catch (e: any) {
       setError(e.message);
     }
@@ -2604,17 +2553,32 @@ function VerificationPendingBlocker({ user }: { user: any }) {
         
         {!success ? (
           <div className="text-left bg-black/20 p-4 rounded-lg border border-white/5 mb-6">
-            <div className="text-[12px] font-medium mb-3">Missing ID Document?</div>
-            <p className="text-[11.5px] mb-3" style={{ color: T.textFaint }}>If you didn't upload your ID during registration, upload it now to expedite verification.</p>
+            <div className="space-y-4 mb-4">
+              <Field label="Full Name"><TextField placeholder="Jane Doe" value={fullName} onChange={(e:any) => setFullName(e.target.value)} /></Field>
+              <Field label="Organization"><TextField placeholder="Acme Corp" value={org} onChange={(e:any) => setOrg(e.target.value)} /></Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Role in Organization">
+                  <select className="dt-input dt-focusable w-full rounded-lg px-3.5 py-2.5 text-[13.5px] appearance-none" value={role} onChange={(e: any) => setRole(e.target.value)}>
+                    <option value="Developer">Developer</option>
+                    <option value="QA">QA</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </Field>
+                <Field label="Employee ID"><TextField placeholder="EMP-1234" value={empId} onChange={(e:any) => setEmpId(e.target.value)} /></Field>
+              </div>
+            </div>
+            
+            <div className="text-[12px] font-medium mb-3">ID Document Verification</div>
+            <p className="text-[11.5px] mb-3" style={{ color: T.textFaint }}>Please upload your employee ID card to expedite verification.</p>
             <input type="file" accept="image/*" className="dt-input w-full text-[12px] p-2 mb-3" onChange={(e: any) => setFile(e.target.files?.[0])} />
-            <Button variant="primary" className="w-full text-[12px] py-1.5" disabled={!file || uploading} onClick={handleUpload}>
-              {uploading ? "Uploading..." : "Submit ID Document"}
+            <Button variant="primary" className="w-full text-[12px] py-1.5" disabled={!file || !fullName || !org || !empId || uploading} onClick={handleSubmit}>
+              {uploading ? "Submitting..." : "Submit Verification"}
             </Button>
             {error && <div className="mt-3 text-red-500 text-[11.5px]">{error}</div>}
           </div>
         ) : (
           <div className="text-green-500 text-[12px] p-3 bg-green-500/10 rounded mb-6 border border-green-500/20">
-            Document successfully uploaded!
+            Verification submitted successfully! Please wait for approval.
           </div>
         )}
 
